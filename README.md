@@ -1,159 +1,133 @@
-# AI-Powered Faceless Video Production System
+# Video Generation System
 
-A Python-based system for automatically creating faceless YouTube videos using AI services. The system uses DeepSeek AI for script generation, ElevenLabs for voice synthesis, and Flux AI for visual content generation.
+A comprehensive system for automated video production with advanced features and multiple service providers.
 
 ## Features
 
-- 🤖 AI-powered script generation optimized for video content
-- 🗣️ Natural-sounding voiceovers using ElevenLabs
-- 🎨 Dynamic visual content generation with Flux AI
-- 🎬 Automatic video assembly with transitions and effects
-- 📊 Detailed metadata and logging
-- 🎯 Customizable styles, durations, and target audiences
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/faceless-video-producer.git
-cd faceless-video-producer
-```
-
-2. Create and activate a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Set up your API keys:
-   - Copy `.env.example` to `.env`
-   - Add your API keys for DeepSeek, ElevenLabs, and Flux AI
-   - Adjust other configuration settings as needed
-
-## Usage
-
-### Command Line Interface
-
-Create a video using the command-line interface:
-
-```bash
-python -m src "Your Video Topic" \
-    --style educational \
-    --duration 5 \
-    --audience beginners \
-    --visual-style "modern minimalist"
-```
-
-Optional arguments:
-- `--style`: Content style (informative, entertaining, educational)
-- `--duration`: Target video duration in minutes
-- `--audience`: Target audience
-- `--voice-id`: ElevenLabs voice ID
-- `--visual-style`: Style for generated visuals
-- `--output`: Custom output path
-- `--context`: Path to JSON file with additional context
-
-### Python API
-
-```python
-from src.workflow import create_video
-
-video_path = create_video(
-    topic="Introduction to AI",
-    style="educational",
-    duration_minutes=5,
-    target_audience="beginners",
-    visual_style="modern tech",
-    additional_context={
-        "key_points": ["Point 1", "Point 2"],
-        "tone": "friendly"
-    }
-)
-```
+- **Script Generation**: Generate engaging video scripts using multiple LLM providers
+  - Google Gemini
+  - DeepSeek
+  - OpenAI GPT
+  - Local HuggingFace models
+  
+- **Audio Generation**: Convert scripts to high-quality speech using multiple TTS providers
+  - Google Cloud TTS
+  - ElevenLabs
+  - Coqui TTS (offline)
+  
+- **Visual Generation**: Create compelling visuals using state-of-the-art models
+  - FLUX.1
+  - Stable Diffusion
+  - DALL·E
+  
+- **Video Assembly**: Combine all elements into polished videos
+  - Automated synchronization
+  - Caption generation
+  - Background music
+  - Professional transitions
 
 ## Project Structure
 
 ```
-faceless-video-producer/
-├── src/
-│   ├── __init__.py
-│   ├── __main__.py           # CLI entry point
-│   ├── config.py             # Configuration management
-│   ├── script_generator.py   # DeepSeek integration
-│   ├── audio_generator.py    # ElevenLabs integration
-│   ├── visual_generator.py   # Flux AI integration
-│   ├── video_assembler.py    # Video assembly
-│   └── workflow.py           # Main orchestrator
-├── examples/
-│   └── create_video.py       # Example usage
-├── output/                   # Generated content
-├── temp/                     # Temporary files
-├── .env.example             # Environment template
-├── requirements.txt         # Dependencies
-└── README.md               # This file
+src/
+├── core/                    # Core system components
+│   ├── config.py           # Configuration management
+│   ├── errors.py           # Error handling and logging
+│   └── cache.py            # Caching functionality
+├── providers/              # Service providers
+│   ├── base.py            # Base provider classes
+│   ├── audio.py           # Audio providers
+│   ├── image.py           # Image generation providers
+│   └── llm.py             # Language model providers
+├── generation/             # Content generation
+│   ├── audio.py           # Unified audio generation
+│   ├── visual.py          # Visual content generation
+│   └── script.py          # Script generation
+└── features/              # Higher-level features
+    ├── captions.py        # Caption generation
+    ├── preferences.py     # Video preferences
+    ├── workflow.py        # Workflow orchestration
+    ├── music.py           # Background music
+    ├── assembler.py       # Video assembly
+    ├── synchronizer.py    # Video synchronization
+    ├── concepts.py        # Concept extraction
+    └── uploader.py        # YouTube upload
 ```
 
-## Configuration
+## Setup
 
-The system uses environment variables for configuration. Copy `.env.example` to `.env` and set the following variables:
-
+1. Create a Python virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
 ```
-DEEPSEEK_API_KEY=your_deepseek_api_key
-ELEVENLABS_API_KEY=your_elevenlabs_api_key
-FLUX_API_KEY=your_flux_api_key
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
 ```
 
-Additional settings can be configured in `.env`:
-- `OUTPUT_DIR`: Directory for generated content
-- `TEMP_DIR`: Directory for temporary files
-- `LOG_LEVEL`: Logging verbosity
+3. Configure environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your API keys and preferences
+```
 
-## Output
+4. Run tests:
+```bash
+pytest
+```
 
-The system generates:
-1. A final video file (MP4 format)
-2. A JSON metadata file containing:
-   - Video title and sections
-   - Duration information
-   - Generated content paths
-   - Additional metadata
+## Usage
 
-## Logging
+Basic example:
+```python
+from video_gen import VideoGenerator, VideoPreferences
 
-Logs are stored in `output/workflow.log` with the following features:
-- Daily rotation
-- 7-day retention
-- Configurable log level
-- Detailed error tracking
+# Initialize video generator
+generator = VideoGenerator()
 
-## Error Handling
+# Generate a video
+video = await generator.create_video(
+    topic="Python Programming Tips",
+    style="educational",
+    duration_minutes=5.0
+)
 
-The system includes comprehensive error handling:
-- API error recovery
-- Resource cleanup
-- Detailed error logging
-- User-friendly error messages
+# Upload to YouTube
+await video.upload_to_youtube(
+    title="Top Python Tips for 2024",
+    description="Learn essential Python programming tips...",
+    privacy="private"
+)
+```
+
+## Development
+
+- Follow PEP 8 style guidelines
+- Add comprehensive docstrings
+- Write unit tests for new features
+- Use type hints
+- Handle errors appropriately
+- Add proper logging
+- Implement caching where beneficial
+
+## Testing
+
+Run tests with coverage:
+```bash
+pytest --cov=src tests/
+```
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+3. Make your changes
+4. Add tests
+5. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- DeepSeek AI for script generation
-- ElevenLabs for voice synthesis
-- Flux AI for visual content generation
-- MoviePy for video processing 
+MIT License - see LICENSE file for details 
