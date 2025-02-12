@@ -13,7 +13,7 @@ from .audio_generator import AudioGenerator
 from .visual_generator import VisualGenerator
 from .video_assembler import VideoAssembler
 from .caption_generator import CaptionGenerator
-from .background_music import BackgroundMusicManager
+from .background_music import BackgroundMusic
 from .video_preferences import VideoPreferences
 from .youtube_uploader import YouTubeUploader
 from .workflow import create_video_with_retries
@@ -54,6 +54,26 @@ async def main():
         "--music-style",
         choices=["ambient", "upbeat", "suspenseful", "tech"],
         help="Style for background music"
+    )
+    
+    # Image generator arguments
+    parser.add_argument(
+        "--image-generator",
+        choices=["flux", "stable-diffusion"],
+        default="flux",
+        help="Image generation model to use"
+    )
+    parser.add_argument(
+        "--image-style",
+        choices=["realistic", "cartoon", "artistic", "minimal"],
+        default="cartoon",
+        help="Visual style for generated images"
+    )
+    parser.add_argument(
+        "--image-quality",
+        type=float,
+        default=1.0,
+        help="Quality emphasis for image generation (0.0-2.0)"
     )
     
     # Output arguments
@@ -113,6 +133,19 @@ async def main():
                 "thumbnail_path": args.thumbnail
             }
         
+        # Prepare additional context with image generation settings
+        additional_context = {
+            "visual_generation": {
+                "generator": args.image_generator,
+                "style": args.image_style,
+                "quality_emphasis": args.image_quality,
+                "format_requirements": {
+                    "aspect_ratio": "9:16" if args.format == "shorts" else "16:9",
+                    "resolution": (1080, 1920) if args.format == "shorts" else (1920, 1080)
+                }
+            }
+        }
+        
         # Create the video
         result = await create_video_with_retries(
             topic=args.topic,
@@ -123,7 +156,8 @@ async def main():
             caption_style=args.caption_style,
             music_style=args.music_style,
             output_path=args.output,
-            youtube_settings=youtube_settings
+            youtube_settings=youtube_settings,
+            additional_context=additional_context
         )
         
         # Print results

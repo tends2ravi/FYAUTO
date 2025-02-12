@@ -6,13 +6,25 @@ from pathlib import Path
 import tempfile
 import shutil
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, Mock, AsyncMock
 import asyncio
-from typing import Generator, Dict
+from typing import Generator, Dict, AsyncGenerator
 import os
+import redis
+
+from src.error_handler import ErrorHandler
+from src.caption_system import CaptionSystem
+from src.visual_generator import VisualGenerator
+from src.core.errors import ErrorHandler
+from src.core.config import REDIS_HOST, REDIS_PORT, REDIS_DB
+from src.utils.logging_config import setup_logging
+from src.config.settings import settings
 
 # Configure pytest-asyncio
 pytest_plugins = ["pytest_asyncio"]
+
+# Set up logging for tests
+setup_logging(log_level="DEBUG")
 
 def pytest_configure(config):
     """Configure pytest."""
@@ -43,10 +55,126 @@ def setup_test_env():
         os.remove("mock_credentials.json")
 
 @pytest.fixture(scope="session")
-def test_dir():
-    """Create a temporary directory for test files."""
+def temp_dir():
+    """Create a temporary directory for test files.
+    
+    Yields:
+        Path to temporary directory.
+    """
     with tempfile.TemporaryDirectory() as temp_dir:
         yield Path(temp_dir)
+
+@pytest.fixture(scope="session")
+def test_assets_dir(temp_dir):
+    """Create a directory for test assets.
+    
+    Args:
+        temp_dir: Temporary directory fixture.
+        
+    Returns:
+        Path to test assets directory.
+    """
+    assets_dir = temp_dir / "assets"
+    assets_dir.mkdir(exist_ok=True)
+    return assets_dir
+
+@pytest.fixture(scope="session")
+def test_output_dir(temp_dir):
+    """Create a directory for test output.
+    
+    Args:
+        temp_dir: Temporary directory fixture.
+        
+    Returns:
+        Path to test output directory.
+    """
+    output_dir = temp_dir / "output"
+    output_dir.mkdir(exist_ok=True)
+    return output_dir
+
+@pytest.fixture
+def error_handler() -> ErrorHandler:
+    """Create an error handler instance for testing."""
+    return ErrorHandler(max_retries=2, retry_delay=0.1)
+
+@pytest.fixture
+def assets_dir(temp_dir: Path) -> Path:
+    """Create a temporary assets directory with test files."""
+    assets_dir = temp_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    
+    # Create fonts directory
+    fonts_dir = assets_dir / "fonts"
+    fonts_dir.mkdir()
+    
+    # Copy test font
+    test_font = Path("tests/test_data/OpenSans-Regular.ttf")
+    if test_font.exists():
+        shutil.copy(test_font, fonts_dir / "OpenSans-Regular.ttf")
+    
+    return assets_dir
+
+@pytest.fixture
+def output_dir(temp_dir: Path) -> Path:
+    """Create a temporary output directory."""
+    output_dir = temp_dir / "output"
+    output_dir.mkdir()
+    return output_dir
+
+@pytest.fixture
+async def caption_system(
+    error_handler: ErrorHandler,
+    assets_dir: Path
+) -> AsyncGenerator[CaptionSystem, None]:
+    """Create a caption system instance for testing."""
+    system = CaptionSystem(error_handler)
+    yield system
+    await system.cleanup()
+
+@pytest.fixture
+async def visual_generator(
+    error_handler: ErrorHandler,
+    output_dir: Path
+) -> AsyncGenerator[VisualGenerator, None]:
+    """Create a visual generator instance for testing."""
+    generator = VisualGenerator(
+        error_handler=error_handler,
+        output_dir=output_dir,
+        model_version="test-model"  # Use test model version
+    )
+    yield generator
+    await generator.cleanup()
+
+@pytest.fixture
+def test_video(temp_dir: Path) -> Path:
+    """Create a test video file."""
+    from moviepy.editor import ColorClip
+    
+    # Create a simple color clip
+    clip = ColorClip(size=(640, 480), color=(0, 0, 0), duration=2)
+    video_path = temp_dir / "test_video.mp4"
+    clip.write_videofile(str(video_path), fps=30)
+    
+    return video_path
+
+@pytest.fixture
+def test_image(temp_dir: Path) -> Path:
+    """Create a test image file."""
+    from PIL import Image
+    
+    # Create a simple test image
+    img = Image.new("RGB", (640, 480), color="black")
+    image_path = temp_dir / "test_image.png"
+    img.save(image_path)
+    
+    return image_path
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an event loop for async tests."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
 
 @pytest.fixture(scope="session")
 def sample_script_data() -> Dict:
@@ -101,42 +229,51 @@ def mock_google_client() -> MagicMock:
     return mock
 
 @pytest.fixture(scope="session")
-def sample_image(test_dir: Path) -> Generator[Path, None, None]:
-    """Create a sample test image."""
+def sample_image(test_assets_dir):
+    """Create a sample image for testing.
+    
+    Args:
+        test_assets_dir: Test assets directory fixture.
+        
+    Returns:
+        Path to sample image file.
+    """
     from PIL import Image
     import numpy as np
     
-    # Create a simple gradient image
-    arr = np.linspace(0, 255, 100*100).reshape(100, 100).astype('uint8')
-    img = Image.fromarray(arr)
+    # Create a simple test image
+    img = Image.fromarray(
+        (np.random.rand(100, 100, 3) * 255).astype(np.uint8)
+    )
     
-    image_path = test_dir / "test_image.png"
+    image_path = test_assets_dir / "sample.png"
     img.save(image_path)
     
-    yield image_path
-    
-    if image_path.exists():
-        image_path.unlink()
+    return image_path
 
 @pytest.fixture(scope="session")
-def sample_audio(test_dir: Path) -> Generator[Path, None, None]:
-    """Create a sample test audio file."""
-    from scipy.io import wavfile
+def sample_audio(test_assets_dir):
+    """Create a sample audio file for testing.
+    
+    Args:
+        test_assets_dir: Test assets directory fixture.
+        
+    Returns:
+        Path to sample audio file.
+    """
     import numpy as np
+    import soundfile as sf
     
-    # Create a simple sine wave
+    # Create a simple test audio signal
     sample_rate = 44100
-    duration = 1.0
+    duration = 1.0  # seconds
     t = np.linspace(0, duration, int(sample_rate * duration))
-    audio_data = np.sin(2 * np.pi * 440 * t).astype(np.float32)
+    signal = np.sin(2 * np.pi * 440 * t)  # 440 Hz sine wave
     
-    audio_path = test_dir / "test_audio.wav"
-    wavfile.write(audio_path, sample_rate, audio_data)
+    audio_path = test_assets_dir / "sample.wav"
+    sf.write(audio_path, signal, sample_rate)
     
-    yield audio_path
-    
-    if audio_path.exists():
-        audio_path.unlink()
+    return audio_path
 
 @pytest.fixture(scope="function")
 def mock_cache_dir(test_dir: Path) -> Generator[Path, None, None]:
@@ -250,4 +387,98 @@ def mock_error_handler():
         async def run_with_timeout(self, func, timeout=30):
             return await asyncio.wait_for(func(), timeout)
     
-    return TestErrorHandler() 
+    return TestErrorHandler()
+
+@pytest.fixture
+def mock_redis():
+    """Create a mock Redis client."""
+    mock = Mock(spec=redis.Redis)
+    mock.get.return_value = None
+    return mock
+
+@pytest.fixture
+def mock_process():
+    """Create a mock asyncio subprocess."""
+    mock = AsyncMock()
+    mock.communicate = AsyncMock(return_value=(b"Success", b""))
+    mock.returncode = 0
+    return mock
+
+@pytest.fixture
+def mock_aiohttp_session():
+    """Create a mock aiohttp ClientSession."""
+    mock = AsyncMock()
+    mock.post = AsyncMock()
+    mock.get = AsyncMock()
+    mock.close = AsyncMock()
+    return mock
+
+@pytest.fixture
+def mock_image():
+    """Create a mock PIL Image."""
+    mock = Mock()
+    mock.save = Mock()
+    return mock
+
+@pytest.fixture
+def mock_torch_device():
+    """Create a mock torch device."""
+    return Mock(return_value="cpu")
+
+@pytest.fixture
+def redis_client():
+    """Create a real Redis client for integration tests."""
+    client = redis.Redis(
+        host=REDIS_HOST,
+        port=REDIS_PORT,
+        db=REDIS_DB
+    )
+    yield client
+    client.flushdb()  # Clean up after tests
+
+@pytest.fixture(autouse=True)
+def mock_settings(monkeypatch):
+    """Mock settings for testing.
+    
+    Args:
+        monkeypatch: pytest monkeypatch fixture.
+    """
+    # Override settings for testing
+    test_settings = {
+        "REDIS_URL": "redis://localhost:6379/1",
+        "CACHE_TTL": 60,
+        "MAX_WORKERS": 2,
+        "BATCH_SIZE": 5
+    }
+    
+    for key, value in test_settings.items():
+        monkeypatch.setattr(settings, key, value)
+
+@pytest.fixture
+def mock_provider():
+    """Create a mock provider for testing.
+    
+    Returns:
+        Mock provider instance.
+    """
+    class MockProvider:
+        def __init__(self):
+            self.api_key = "test_key"
+            self.provider_name = "mock_provider"
+            
+        def validate_credentials(self):
+            return True
+            
+        def make_request(self, **kwargs):
+            return {"status": "success", "data": kwargs}
+    
+    return MockProvider()
+
+@pytest.fixture
+def sample_text():
+    """Provide sample text for testing.
+    
+    Returns:
+        Sample text string.
+    """
+    return "This is a sample text for testing purposes." 
